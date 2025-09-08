@@ -91,3 +91,99 @@ public class DatabaseService
             Server.PrintToConsole($"[CS2DatabaseCleanup] Failed to update player disconnect: {ex.Message}");
         }
     }
+
+    public async Task ExecuteCleanupRulesAsync()
+    {
+        try
+        {
+            using var connection = new MySqlConnection(_connectionString);
+            await connection.OpenAsync();
+
+            foreach (var rule in _cleanupRules)
+            {
+                var eligiblePlayers = await GetEligiblePlayersAsync(connection, rule.Rule);
+
+                foreach (var steamId in eligiblePlayers)
+                {
+                    foreach (var query in rule.Queries)
+                    {
+                        try
+                        {
+                            var processedQuery = query.Replace("@steamid", steamId.ToString());
+                            using var command = new MySqlCommand(processedQuery, connection);
+                            var affectedRows = await command.ExecuteNonQueryAsync();
+
+                            Server.PrintToConsole($"[CS2DatabaseCleanup] Executed cleanup for SteamID {steamId}: {affectedRows} rows affected");
+                        }
+                        catch (Exception ex)
+                        {
+                            Server.PrintToConsole($"[CS2DatabaseCleanup] Failed to execute cleanup query for SteamID {steamId}: {ex.Message}");
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Server.PrintToConsole($"[CS2DatabaseCleanup] Failed to execute cleanup rules: {ex.Message}");
+        }
+    }
+
+    private async Task<List<ulong>> GetEligiblePlayersAsync(MySqlConnection connection, string rule)
+    {
+        var eligiblePlayers = new List<ulong>();
+
+        try
+        {
+            var (field, days) = ParseRule(rule);
+            if (field == null || days == 0) return eligiblePlayers;
+
+            var cutoffDate = DateTime.Now.AddDays(-days);
+            var query = $"SELECT steamid FROM player_data WHERE {field} < @cutoffDate";
+
+            using var command = new MySqlCommand(query, connection);
+            command.Parameters.AddWithValue("@cutoffDate", cutoffDate);
+
+            using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                eligiblePlayers.Add(Convert.ToUInt64(reader["steamid"]));
+            }
+        }
+        catch (Exception ex)
+        {
+            Server.PrintToConsole($"[CS2DatabaseCleanup] Failed to get eligible players for rule '{rule}': {ex.Message}");
+        }
+
+        return eligiblePlayers;
+    }
+
+    private (string? field, int days) ParseRule(string rule)
+    {
+        // Parse rules like "@lastLogin>30d" or "@firstLogin>60d"
+        if (!rule.StartsWith("@")) return (null, 0);
+
+        var parts = rule.Substring(1).Split('>');
+        if (parts.Length != 2) return (null, 0);
+
+        var field = parts[0].ToLower() switch
+        {
+            "lastlogin" => "last_login",
+            "firstlogin" => "first_login",
+            "lastlogout" => "last_logout",
+            _ => null
+        };
+
+        if (field == null) return (null, 0);
+
+        var durationStr = parts[1];
+        if (!durationStr.EndsWith("d")) return (null, 0);
+
+        if (int.TryParse(durationStr.Substring(0, durationStr.Length - 1), out var days))
+        {
+            return (field, days);
+        }
+
+        return (null, 0);
+    }
+}

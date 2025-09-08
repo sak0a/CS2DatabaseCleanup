@@ -1,0 +1,24 @@
+{
+  "Database": {
+    "Host": "your_database_host",
+    "Port": 3306,
+    "Username": "your_username",
+    "Password": "your_password",
+    "DatabaseName": "your_database_name"
+  },
+  "Rules": [
+    {
+      "Rule": "@lastLogin>30d",
+      "Queries": [
+        "DELETE FROM wp_player_skins WHERE steamid = @steamid;",
+        "DELETE FROM wp_player_stats WHERE steamid = @steamid;"
+      ]
+    },
+    {
+      "Rule": "@firstLogin>60d",
+      "Queries": [
+        "DELETE FROM players WHERE steamid = @steamid;"
+      ]
+    }
+  ]
+}

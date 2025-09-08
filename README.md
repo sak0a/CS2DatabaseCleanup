@@ -73,7 +73,7 @@ In your SQL queries, you can use:
 
 ## Installation
 
-1. Build the plugin using .NET 9.0
+1. Build the plugin using .NET 8.0
 2. Copy the compiled DLL to your CounterStrike Sharp plugins folder
 3. Configure the `config.json` file with your database credentials
 4. Restart your server
